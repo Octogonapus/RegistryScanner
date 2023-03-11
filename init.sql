@@ -23,3 +23,12 @@ CREATE TABLE IF NOT EXISTS registry_scan_monitor (
     stacktrace text
 );
 CREATE INDEX idx_registry_scan_monitor_ended ON registry_scan_monitor (ended);
+
+CREATE TABLE IF NOT EXISTS packages_time_series (
+    collected datetime,
+    npackages int
+);
+CREATE INDEX idx_packages_time_series_collected ON packages_time_series (collected);
+CREATE EVENT record_npackages ON SCHEDULE EVERY 1 DAY DO
+    INSERT INTO packages_time_series (collected, npackages)
+    VALUES ((SELECT CURRENT_TIMESTAMP), (SELECT COUNT(package_uuid) FROM package));
