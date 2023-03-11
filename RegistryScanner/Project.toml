@@ -1,0 +1,15 @@
+name = "RegistryScanner"
+uuid = "6972a089-c8e8-4e42-863e-263e67032df2"
+version = "0.1.0"
+
+[deps]
+DBInterface = "a10d1c49-ce27-4219-8d33-6db1a4562965"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Diana = "070d9d8b-17a7-5814-83fa-42438ba5c6e0"
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+MySQL = "39abe10b-433b-5dbd-92d4-e302a9df00cd"
+PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"

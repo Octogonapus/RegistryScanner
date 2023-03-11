@@ -1,0 +1,71 @@
+version: "3.9"
+services:
+  db:
+    image: mysql:8.0
+    command: --init-file /data/application/init.sql
+    ports:
+      - 33061:3306
+    volumes:
+      - dbdata:/var/lib/mysql
+      - ./init.sql:/data/application/init.sql
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_USER: dbuser
+      MYSQL_PASSWORD: secret
+    networks:
+      - app
+  scanner:
+    image: registry-scanner:v0.1
+    volumes:
+      - scanner-cache:/scanner-cache
+    environment:
+      SCAN_INTERVAL_MINUTES: 15
+      CACHE_DIR: /scanner-cache
+      REGISTRIES_TO_SCAN: |
+        [registries]
+
+        [registries.general]
+        owner = "JuliaRegistries"
+        name = "General"
+        base_ref_name = "master"
+        secret = "github_token"
+      DB_HOST: db
+      DB_USER: root
+      DB_PASS: secret
+      DB_PORT: 3306
+      DB_DATABASE: main
+      JULIA_DEBUG: RegistryScanner
+    networks:
+      - app
+    secrets:
+      - github_token
+  grafana:
+    image: grafana/grafana-oss:latest
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./datasources:/etc/grafana/provisioning/datasources
+      - ./dashboards:/etc/grafana/provisioning/dashboards
+      - ./dashboard_files:/var/lib/grafana/dashboards
+    ports:
+      - 3000:3000
+    environment:
+      MYSQL_USER: root
+      MYSQL_PASSWORD: secret
+      MYSQL_DATABASE: main
+      MYSQL_HOST: db
+      MYSQL_PORT: 3306
+    networks:
+      - app
+
+secrets:
+  github_token:
+    file: ./github_token.txt
+
+networks:
+  app:
+    driver: bridge
+
+volumes:
+  dbdata:
+  scanner-cache:
+  grafana-storage:
