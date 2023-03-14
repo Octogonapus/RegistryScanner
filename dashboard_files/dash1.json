@@ -303,9 +303,20 @@
                         "uid": "P982945308D3682D1"
                     },
                     "editorMode": "builder",
-                    "expr": "{compose_service=\"scanner\"} |= `` | json | __error__=`` | level = `error`",
+                    "expr": "{compose_service=\"scanner\"} | json | __error__=`` | level = `error`",
                     "queryType": "range",
                     "refId": "A"
+                },
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "P982945308D3682D1"
+                    },
+                    "editorMode": "builder",
+                    "expr": "{compose_service=\"scanner\"} |= `ERROR`",
+                    "hide": false,
+                    "queryType": "range",
+                    "refId": "B"
                 }
             ],
             "title": "Scanner Errors",
@@ -326,8 +337,8 @@
     },
     "timepicker": {},
     "timezone": "",
-    "title": "New dashboard",
+    "title": "General",
     "uid": "_ENBNOaVk",
-    "version": 8,
+    "version": 11,
     "weekStart": ""
 }

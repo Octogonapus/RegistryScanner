@@ -403,6 +403,9 @@ function scan_registry(registry::GitHubRegistry, since_time::ZonedDateTime)
     d = JSON.parse(r.Data)
 
     pull_requests = map(it -> it["node"], d["data"]["repository"]["pullRequests"]["edges"])
+    for pr in pull_requests
+        @debug url = pr["url"] updatedAt = pr["updatedAt"] since_time
+    end
     filter!(it -> ZonedDateTime(it["updatedAt"], dateformat"yyyy-mm-ddTHH:MM:SSz") > since_time, pull_requests)
     @debug "pull_requests after date filtering" pull_requests
 
@@ -505,10 +508,20 @@ last_scan_time_path() = joinpath(ENV["CACHE_DIR"], "last_scan_time.txt")
 
 function load_last_scan_time()
     if !isfile(last_scan_time_path())
-        save_last_scan_time(ZonedDateTime(Dates.now(), tz"EST"))
+        time = ZonedDateTime(Dates.now(), tz"EST")
+        save_last_scan_time(time)
+        return time
     end
-    time_on_disk = read(last_scan_time_path(), String)
-    return ZonedDateTime(DateTime(time_on_disk), tz"EST")
+
+    try
+        time_on_disk = strip(read(last_scan_time_path(), String))
+        return ZonedDateTime(DateTime(time_on_disk), tz"EST")
+    catch ex
+        @error "Failed to load last scan time. Resetting it." ex = (ex, catch_backtrace())
+        time = ZonedDateTime(Dates.now(), tz"EST")
+        save_last_scan_time(time)
+        return time
+    end
 end
 
 function save_last_scan_time(time::ZonedDateTime)
