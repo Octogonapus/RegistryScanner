@@ -1,0 +1,9 @@
+apiVersion: 1
+
+datasources:
+  - name: loki
+    type: loki
+    access: proxy
+    url: http://$LOKI_HOST:$LOKI_PORT
+    jsonData:
+      maxLines: 1000

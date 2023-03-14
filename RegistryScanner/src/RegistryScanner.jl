@@ -1,6 +1,7 @@
 module RegistryScanner
 
 using DBInterface, TOML, DataFrames, PrettyTables, MySQL, Diana, Dates, JSON, TimeZones, HTTP
+using LoggingFormats, LoggingExtras
 using DBInterface: execute, prepare
 import Base.floor
 
@@ -230,13 +231,17 @@ function scan_new_package(db, package_uuid, package_name)
         DataFrame(execute(prepare(db, "SELECT * FROM package WHERE package_name = ?;"), [package_name]))
 
     if !isempty(packages_with_the_same_uuid)
-        @error "Found packages with the same UUID:"
-        pretty_table(packages_with_the_same_uuid)
+        for row in eachrow(packages_with_the_same_uuid)
+            @error "PR introduces a new package with a preexisting UUID" type = "finding" scan_type = "PR" package_name =
+                row[:package_name] package_uuid = row[:package_uuid]
+        end
     end
 
     if !isempty(packages_with_the_same_name)
-        @warn "Found packages with the same name:"
-        pretty_table(packages_with_the_same_name)
+        for row in eachrow(packages_with_the_same_name)
+            @warn "PR introduces a new package with a preexisting name" type = "finding" scan_type = "PR" package_name =
+                row[:package_name] package_uuid = row[:package_uuid]
+        end
     end
 
     return Dict(
@@ -280,15 +285,15 @@ function scan_db(db)
 
     packages_with_non_unique_names = DataFrame(execute(
         db,
-        "SELECT package_name, COUNT(package_name) FROM package
-        GROUP BY package_name HAVING COUNT(package_name) > 1;",
+        "SELECT package_name, package_uuid, COUNT(package_name) FROM package
+        GROUP BY package_name, package_uuid HAVING COUNT(package_name) > 1;",
     ))
     packages_with_non_unique_names = select_packages_by_name(packages_with_non_unique_names)
 
     packages_with_non_unique_uuids = DataFrame(execute(
         db,
-        "SELECT package_uuid, COUNT(package_uuid) FROM package
-        GROUP BY package_uuid HAVING COUNT(package_uuid) > 1;",
+        "SELECT package_name, package_uuid, COUNT(package_uuid) FROM package
+        GROUP BY package_name, package_uuid HAVING COUNT(package_uuid) > 1;",
     ))
     packages_with_non_unique_uuids = select_packages_by_uuid(packages_with_non_unique_uuids)
 
@@ -302,23 +307,31 @@ function scan_db(db)
     shadowed_packages = select_packages_by_uuid(shadowed_packages)
 
     if !isempty(shadowed_packages)
-        @error "Found shadowed packages:"
-        pretty_table(shadowed_packages)
+        for row in eachrow(shadowed_packages)
+            @error "Found shadowed package" type = "finding" scan_type = "full" package_name = row[:package_name] package_uuid =
+                row[:package_uuid]
+        end
     end
 
     if !isempty(packages_using_http)
-        @error "Found packages using HTTP:"
-        pretty_table(packages_using_http)
+        for row in eachrow(packages_using_http)
+            @error "Found packages using HTTP" type = "finding" scan_type = "full" package_name = row[:package_name] package_uuid =
+                [:package_uuid]
+        end
     end
 
     if !isempty(packages_with_non_unique_uuids)
-        @error "Found packages with non-unqiue UUIDs:"
-        pretty_table(packages_with_non_unique_uuids)
+        for row in eachrow(packages_with_non_unique_uuids)
+            @error "Found packages with non-unique UUIDs" type = "finding" scan_type = "full" package_name =
+                row[:package_name] package_uuid = [:package_uuid]
+        end
     end
 
     if !isempty(packages_with_non_unique_names)
-        @warn "Found packages with non-unqiue names:"
-        pretty_table(packages_with_non_unique_names)
+        for row in eachrow(packages_with_non_unique_names)
+            @warn "Found package with non-unique name" type = "finding" scan_type = "full" package_name =
+                row[:package_name] package_uuid = [:package_uuid]
+        end
     end
 
     return Dict(
@@ -466,76 +479,87 @@ function scan_diff(registry::GitHubRegistry, head_ref_name)
 end
 
 function do_registry_scans(db, registries, last_scan_time)
-    scan_start_time = Dates.now()
-    try
-        for registry in registries
-            @info "Updating registry $(registry.owner)/$(registry.name)"
-            dir = get_cache_dir(registry)
-            update_cache(registry, dir)
-            import_registry(db, dir)
+    for registry in registries
+        @info "Updating registry $(registry.owner)/$(registry.name)"
+        dir = get_cache_dir(registry)
+        update_cache(registry, dir)
+        import_registry(db, dir)
 
-            @info "Scanning registry $(registry.owner)/$(registry.name)"
-            pull_requests = scan_registry(registry, last_scan_time)
-            @info "Found $(nrow(pull_requests)) PRs to scan"
+        @info "Scanning registry $(registry.owner)/$(registry.name)"
+        pull_requests = scan_registry(registry, last_scan_time)
+        @info "Found $(nrow(pull_requests)) PRs to scan"
 
-            for pr in eachrow(pull_requests)
-                @info "Scanning PR $(pr[:url])"
-                pkg_uuid, pkg_name = scan_diff(registry, pr[:head_ref_name])
-                @debug pkg_uuid pkg_name
-                scan_results = scan_new_package(db, pkg_uuid, pkg_name)
-                @debug scan_results
-                @info "Scan done"
-            end
+        for pr in eachrow(pull_requests)
+            @info "Scanning PR $(pr[:url])"
+            pkg_uuid, pkg_name = scan_diff(registry, pr[:head_ref_name])
+            @debug registry pr[:head_ref_name] pkg_uuid pkg_name
+            scan_new_package(db, pkg_uuid, pkg_name)
+            @info "Scan done"
         end
-    catch ex
-        bt = catch_backtrace()
-        @error "Registry scans failed" exception = (ex, bt)
-        execute(
-            prepare(db, "INSERT INTO registry_scan_monitor (started, ended, successful, stacktrace) VALUES (?,?,?,?);"),
-            [mysql_datetime(scan_start_time), mysql_datetime(Dates.now()), 0, join(stacktrace(bt), "\n")],
-        )
     end
-    execute(
-        prepare(db, "INSERT INTO registry_scan_monitor (started, ended, successful) VALUES (?,?,?);"),
-        [mysql_datetime(scan_start_time), mysql_datetime(Dates.now()), 1],
-    )
+
+    return nothing
+end
+
+last_scan_time_path() = joinpath(ENV["CACHE_DIR"], "last_scan_time.txt")
+
+function load_last_scan_time()
+    if !isfile(last_scan_time_path())
+        save_last_scan_time(ZonedDateTime(Dates.now(), tz"EST"))
+    end
+    time_on_disk = read(last_scan_time_path(), String)
+    return ZonedDateTime(DateTime(time_on_disk), tz"EST")
+end
+
+function save_last_scan_time(time::ZonedDateTime)
+    open(last_scan_time_path(), "w+") do f
+        write(f, string(time.utc_datetime))
+    end
     return nothing
 end
 
 function run_service()
-    scan_interval_minutes = parse(Int, ENV["SCAN_INTERVAL_MINUTES"])
+    with_logger(FormatLogger(LoggingFormats.JSON(recursive = true), stderr)) do
+        scan_interval_minutes = parse(Int, ENV["SCAN_INTERVAL_MINUTES"])
 
-    registries = map(collect(TOML.parse(ENV["REGISTRIES_TO_SCAN"])["registries"])) do (name, properties)
-        # TODO include a type property in the TOML to support more than just GitHub
-        GitHubRegistry(properties["owner"], properties["name"], properties["base_ref_name"], properties["secret"])
-    end
+        registries = map(collect(TOML.parse(ENV["REGISTRIES_TO_SCAN"])["registries"])) do (name, properties)
+            # TODO include a type property in the TOML to support more than just GitHub
+            GitHubRegistry(properties["owner"], properties["name"], properties["base_ref_name"], properties["secret"])
+        end
 
-    db = retry(DBInterface.connect, delays = ExponentialBackOff(n = 3))(
-        MySQL.Connection,
-        ENV["DB_HOST"],
-        ENV["DB_USER"],
-        ENV["DB_PASS"];
-        db = ENV["DB_DATABASE"],
-        port = parse(Int, ENV["DB_PORT"]),
-    )
+        db = retry(DBInterface.connect, delays = ExponentialBackOff(n = 3))(
+            MySQL.Connection,
+            ENV["DB_HOST"],
+            ENV["DB_USER"],
+            ENV["DB_PASS"];
+            db = ENV["DB_DATABASE"],
+            port = parse(Int, ENV["DB_PORT"]),
+        )
 
-    last_scan_time = ZonedDateTime(now(), tz"EST")
+        last_scan_time = load_last_scan_time()
 
-    while true
-        @info "Running registry scans"
-        do_registry_scans(db, registries, last_scan_time)
-        last_scan_time = ZonedDateTime(now(), tz"EST")
+        while true
+            @info "Running registry scans"
+            try
+                do_registry_scans(db, registries, last_scan_time)
+            catch ex
+                @error "Registry scans failed" exception = (ex, catch_backtrace())
+            end
+            last_scan_time = ZonedDateTime(now(), tz"EST")
+            save_last_scan_time(last_scan_time)
 
-        @info "Running DB scan"
-        scan_db(db)
+            @info "Running DB scan"
+            scan_db(db)
+            @info "DB scan finished"
 
-        try
-            sleep(scan_interval_minutes * 60)
-        catch ex
-            if ex isa InterruptException
-                break
-            else
-                rethrow()
+            try
+                sleep(scan_interval_minutes * 60)
+            catch ex
+                if ex isa InterruptException
+                    break
+                else
+                    rethrow()
+                end
             end
         end
     end

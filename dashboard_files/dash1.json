@@ -115,120 +115,40 @@
         },
         {
             "datasource": {
-                "type": "mysql",
-                "uid": "Jr4WNd-Vk"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "custom": {
-                        "fillOpacity": 70,
-                        "lineWidth": 1
-                    },
-                    "mappings": [
-                        {
-                            "options": {
-                                "0": {
-                                    "color": "red",
-                                    "index": 0,
-                                    "text": "Error"
-                                },
-                                "1": {
-                                    "color": "green",
-                                    "index": 1,
-                                    "text": "OK"
-                                }
-                            },
-                            "type": "value"
-                        }
-                    ],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "red",
-                                "value": null
-                            },
-                            {
-                                "color": "green",
-                                "value": 1
-                            }
-                        ]
-                    }
-                },
-                "overrides": []
+                "type": "loki",
+                "uid": "P982945308D3682D1"
             },
             "gridPos": {
-                "h": 5,
-                "w": 6,
+                "h": 8,
+                "w": 19,
                 "x": 5,
                 "y": 0
             },
-            "id": 4,
+            "id": 9,
             "options": {
-                "colWidth": 0.9,
-                "legend": {
-                    "displayMode": "list",
-                    "placement": "right",
-                    "showLegend": false
-                },
-                "rowHeight": 0.9,
-                "showValue": "auto",
-                "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
-                }
+                "dedupStrategy": "none",
+                "enableLogDetails": true,
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showLabels": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "wrapLogMessage": false
             },
             "targets": [
                 {
-                    "dataset": "main",
                     "datasource": {
-                        "type": "mysql",
-                        "uid": "Jr4WNd-Vk"
+                        "type": "loki",
+                        "uid": "P982945308D3682D1"
                     },
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT successful AS registry_scan, ended FROM main.registry_scan_monitor LIMIT 50 ",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [
-                                    {
-                                        "name": "successful",
-                                        "type": "functionParameter"
-                                    }
-                                ],
-                                "type": "function"
-                            },
-                            {
-                                "parameters": [
-                                    {
-                                        "name": "ended",
-                                        "type": "functionParameter"
-                                    }
-                                ],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    },
-                    "table": "registry_scan_monitor"
+                    "editorMode": "builder",
+                    "expr": "{compose_service=\"scanner\"} | json | __error__=`` | kwargs_type = `finding` | line_format `{{ .msg }} {{ .kwargs_package_name }} {{ .kwargs_package_uuid }}`",
+                    "queryType": "range",
+                    "refId": "A"
                 }
             ],
-            "title": "Status History",
-            "type": "status-history"
+            "title": "Scan Findings",
+            "type": "logs"
         },
         {
             "datasource": {
@@ -288,7 +208,7 @@
                 "overrides": []
             },
             "gridPos": {
-                "h": 7,
+                "h": 6,
                 "w": 5,
                 "x": 0,
                 "y": 5
@@ -353,6 +273,43 @@
             ],
             "title": "Number of Packages",
             "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "loki",
+                "uid": "P982945308D3682D1"
+            },
+            "gridPos": {
+                "h": 8,
+                "w": 19,
+                "x": 5,
+                "y": 8
+            },
+            "id": 8,
+            "options": {
+                "dedupStrategy": "none",
+                "enableLogDetails": true,
+                "prettifyLogMessage": false,
+                "showCommonLabels": false,
+                "showLabels": false,
+                "showTime": true,
+                "sortOrder": "Descending",
+                "wrapLogMessage": false
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "loki",
+                        "uid": "P982945308D3682D1"
+                    },
+                    "editorMode": "builder",
+                    "expr": "{compose_service=\"scanner\"} |= `` | json | __error__=`` | level = `error`",
+                    "queryType": "range",
+                    "refId": "A"
+                }
+            ],
+            "title": "Scanner Errors",
+            "type": "logs"
         }
     ],
     "refresh": "1m",
@@ -371,6 +328,6 @@
     "timezone": "",
     "title": "New dashboard",
     "uid": "_ENBNOaVk",
-    "version": 2,
+    "version": 8,
     "weekStart": ""
 }

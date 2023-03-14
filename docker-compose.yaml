@@ -39,12 +39,17 @@ services:
       - app
     secrets:
       - github_token
+    logging:
+      driver: loki
+      options:
+        loki-url: http://localhost:3100/loki/api/v1/push
   grafana:
     image: grafana/grafana-oss:latest
     volumes:
       - grafana-storage:/var/lib/grafana
       - ./datasources:/etc/grafana/provisioning/datasources
       - ./dashboards:/etc/grafana/provisioning/dashboards
+      - ./alerting:/etc/grafana/provisioning/alerting
       - ./dashboard_files:/var/lib/grafana/dashboards
     ports:
       - 3000:3000
@@ -54,6 +59,18 @@ services:
       MYSQL_DATABASE: main
       MYSQL_HOST: db
       MYSQL_PORT: 3306
+      LOKI_HOST: loki
+      LOKI_PORT: 3100
+    networks:
+      - app
+  loki:
+    image: grafana/loki:2.7.4
+    volumes:
+      - ./loki-config.yaml:/mnt/config/loki-config.yaml
+      - loki-storage:/loki
+    command: -config.file=/mnt/config/loki-config.yaml
+    ports:
+      - 3100:3100
     networks:
       - app
 
@@ -69,3 +86,4 @@ volumes:
   dbdata:
   scanner-cache:
   grafana-storage:
+  loki-storage:

@@ -16,14 +16,6 @@ CREATE TABLE IF NOT EXISTS package (
     FOREIGN KEY (registry_uuid) REFERENCES registry(registry_uuid)
 );
 
-CREATE TABLE IF NOT EXISTS registry_scan_monitor (
-    started datetime,
-    ended datetime,
-    successful tinyint,
-    stacktrace text
-);
-CREATE INDEX idx_registry_scan_monitor_ended ON registry_scan_monitor (ended);
-
 CREATE TABLE IF NOT EXISTS packages_time_series (
     collected datetime,
     npackages int
