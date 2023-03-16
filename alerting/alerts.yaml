@@ -17,7 +17,7 @@ groups:
             datasourceUid: P982945308D3682D1
             model:
               editorMode: builder
-              expr: count(rate({compose_service="scanner"} | json | __error__=`` | level = `error` [$__interval]))
+              expr: count(rate({compose_service="scanner"} | json | __error__=`` | level = `error` | kwargs_scan_type = `` [$__interval]))
               hide: false
               intervalMs: 1000
               maxDataPoints: 43200

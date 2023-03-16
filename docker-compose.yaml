@@ -4,7 +4,7 @@ services:
     image: mysql:8.0
     command: --init-file /data/application/init.sql
     ports:
-      - 33061:3306
+      - 33063:3306
     volumes:
       - dbdata:/var/lib/mysql
       - ./init.sql:/data/application/init.sql
@@ -34,7 +34,6 @@ services:
       DB_PASS: secret
       DB_PORT: 3306
       DB_DATABASE: main
-      JULIA_DEBUG: RegistryScanner
     networks:
       - app
     secrets:

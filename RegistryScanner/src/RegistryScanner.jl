@@ -215,7 +215,7 @@ function are_packages_unique(packages)
 end
 
 """
-    scan_new_package(db, package_uuid, package_name)
+    scan_new_package(db, package_uuid, package_name, pr_url)
 
 Scans the package against the DB for anything that is potentially malicious or otherwise bad practice:
 - (error) Packages that have the same UUID.
@@ -224,23 +224,38 @@ Scans the package against the DB for anything that is potentially malicious or o
 The package being scanned should not be in the DB.
 This is for evaluating whether a package could be added to the registry.
 """
-function scan_new_package(db, package_uuid, package_name)
-    packages_with_the_same_uuid =
-        DataFrame(execute(prepare(db, "SELECT * FROM package WHERE package_uuid = ?;"), [package_uuid]))
-    packages_with_the_same_name =
-        DataFrame(execute(prepare(db, "SELECT * FROM package WHERE package_name = ?;"), [package_name]))
+function scan_new_package(db, package_uuid, package_name, pr_url)
+    packages_with_the_same_uuid = DataFrame(execute(prepare(
+        db,
+        """
+        SELECT package_uuid, package_name, registry_repo
+        FROM package
+        LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
+        WHERE package_uuid = ?;
+        """,
+    ), [package_uuid]))
+
+    packages_with_the_same_name = DataFrame(execute(prepare(
+        db,
+        """
+        SELECT package_uuid, package_name, registry_repo
+        FROM package
+        LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
+        WHERE package_name = ?;
+        """,
+    ), [package_name]))
 
     if !isempty(packages_with_the_same_uuid)
         for row in eachrow(packages_with_the_same_uuid)
             @error "PR introduces a new package with a preexisting UUID" type = "finding" scan_type = "PR" package_name =
-                row[:package_name] package_uuid = row[:package_uuid]
+                row[:package_name] package_uuid = row[:package_uuid] registry_repo = row[:registry_repo] pr_url
         end
     end
 
     if !isempty(packages_with_the_same_name)
         for row in eachrow(packages_with_the_same_name)
             @warn "PR introduces a new package with a preexisting name" type = "finding" scan_type = "PR" package_name =
-                row[:package_name] package_uuid = row[:package_uuid]
+                row[:package_name] package_uuid = row[:package_uuid] registry_repo = row[:registry_repo] pr_url
         end
     end
 
@@ -260,77 +275,90 @@ Scans the DB for anything that is potentially malicious or otherwise bad practic
     - (warn) Packages that have the same name.
 """
 function scan_db(db)
-    select_packages_by_uuid_sql = prepare(db, "SELECT * FROM package WHERE package_uuid = ?;")
-    select_packages_by_name_sql = prepare(db, "SELECT * FROM package WHERE package_name = ?;")
-
-    select_packages_by_uuid(src_packages) = begin
-        packages = DataFrame()
-        for row in eachrow(src_packages)
-            package = DataFrame(execute(select_packages_by_uuid_sql, [row[:package_uuid]]))
-            append!(packages, package)
-        end
-        return packages
-    end
-
-    select_packages_by_name(src_packages) = begin
-        packages = DataFrame()
-        for row in eachrow(src_packages)
-            package = DataFrame(execute(select_packages_by_name_sql, [row[:package_name]]))
-            append!(packages, package)
-        end
-        return packages
-    end
-
-    packages_using_http = DataFrame(execute(db, "SELECT * FROM package WHERE package_repo LIKE 'http://%';"))
+    packages_using_http = DataFrame(execute(
+        db,
+        """
+        SELECT package_name, package_uuid, registry_repo
+        FROM package
+        LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
+        WHERE package_repo LIKE 'http://%'
+        ORDER BY package_name;
+        """,
+    ))
 
     packages_with_non_unique_names = DataFrame(execute(
         db,
-        "SELECT package_name, package_uuid, COUNT(package_name) FROM package
-        GROUP BY package_name, package_uuid HAVING COUNT(package_name) > 1;",
+        """
+        SELECT package_name, package_uuid, registry_repo
+        FROM package
+        LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
+        WHERE package_name in (
+            SELECT package_name
+            FROM package
+            GROUP BY package_name
+            HAVING COUNT(package_name) > 1
+        )
+        ORDER BY package_name;
+        """,
     ))
-    packages_with_non_unique_names = select_packages_by_name(packages_with_non_unique_names)
 
     packages_with_non_unique_uuids = DataFrame(execute(
         db,
-        "SELECT package_name, package_uuid, COUNT(package_uuid) FROM package
-        GROUP BY package_name, package_uuid HAVING COUNT(package_uuid) > 1;",
+        """
+        SELECT package_name, package_uuid, registry_repo
+        FROM package
+        LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
+        WHERE package_name in (
+            SELECT package_uuid
+            FROM package
+            GROUP BY package_uuid
+            HAVING COUNT(package_uuid) > 1
+        )
+        ORDER BY package_name;
+        """,
     ))
-    packages_with_non_unique_uuids = select_packages_by_uuid(packages_with_non_unique_uuids)
 
     shadowed_packages = DataFrame(execute(
         db,
-        "SELECT package_name, package_uuid, COUNT(package_name), COUNT(package_uuid)
+        """
+        SELECT package_name, package_uuid, registry_repo
         FROM package
-        GROUP BY package_name, package_uuid
-        HAVING COUNT(package_name) > 1 AND COUNT(package_uuid) > 1;",
+        LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
+        WHERE package_name in (
+            SELECT package_uuid
+            FROM package
+            GROUP BY package_name, package_uuid
+            HAVING COUNT(package_name) AND COUNT(package_uuid) > 1
+        )
+        ORDER BY package_name;
+        """,
     ))
-    shadowed_packages = select_packages_by_uuid(shadowed_packages)
 
     if !isempty(shadowed_packages)
         for row in eachrow(shadowed_packages)
             @error "Found shadowed package" type = "finding" scan_type = "full" package_name = row[:package_name] package_uuid =
-                row[:package_uuid]
+                row[:package_uuid] registry_repo = row[:registry_repo]
         end
     end
 
     if !isempty(packages_using_http)
         for row in eachrow(packages_using_http)
             @error "Found packages using HTTP" type = "finding" scan_type = "full" package_name = row[:package_name] package_uuid =
-                [:package_uuid]
+                row[:package_uuid] registry_repo = row[:registry_repo]
         end
     end
 
     if !isempty(packages_with_non_unique_uuids)
         for row in eachrow(packages_with_non_unique_uuids)
             @error "Found packages with non-unique UUIDs" type = "finding" scan_type = "full" package_name =
-                row[:package_name] package_uuid = [:package_uuid]
+                row[:package_name] package_uuid = row[:package_uuid] registry_repo = row[:registry_repo]
         end
     end
 
     if !isempty(packages_with_non_unique_names)
         for row in eachrow(packages_with_non_unique_names)
             @warn "Found package with non-unique name" type = "finding" scan_type = "full" package_name =
-                row[:package_name] package_uuid = [:package_uuid]
+                row[:package_name] package_uuid = row[:package_uuid] registry_repo = row[:registry_repo]
         end
     end
 
@@ -496,7 +524,7 @@ function do_registry_scans(db, registries, last_scan_time)
             @info "Scanning PR $(pr[:url])"
             pkg_uuid, pkg_name = scan_diff(registry, pr[:head_ref_name])
             @debug registry pr[:head_ref_name] pkg_uuid pkg_name
-            scan_new_package(db, pkg_uuid, pkg_name)
+            scan_new_package(db, pkg_uuid, pkg_name, pr[:url])
             @info "Scan done"
         end
     end

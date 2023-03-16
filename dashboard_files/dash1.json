@@ -119,7 +119,7 @@
                 "uid": "P982945308D3682D1"
             },
             "gridPos": {
-                "h": 8,
+                "h": 15,
                 "w": 19,
                 "x": 5,
                 "y": 0
@@ -142,7 +142,7 @@
                         "uid": "P982945308D3682D1"
                     },
                     "editorMode": "builder",
-                    "expr": "{compose_service=\"scanner\"} | json | __error__=`` | kwargs_type = `finding` | line_format `{{ .msg }} {{ .kwargs_package_name }} {{ .kwargs_package_uuid }}`",
+                    "expr": "{compose_service=\"scanner\"} | json | __error__=`` | kwargs_type = `finding` | line_format `{{ .msg }} {{ .kwargs_package_name }} {{ .kwargs_package_uuid }} {{ .kwargs_registry_repo }} {{ .kwargs_pr_url }}`",
                     "queryType": "range",
                     "refId": "A"
                 }
@@ -280,10 +280,10 @@
                 "uid": "P982945308D3682D1"
             },
             "gridPos": {
-                "h": 8,
+                "h": 15,
                 "w": 19,
                 "x": 5,
-                "y": 8
+                "y": 15
             },
             "id": 8,
             "options": {
@@ -303,7 +303,7 @@
                         "uid": "P982945308D3682D1"
                     },
                     "editorMode": "builder",
-                    "expr": "{compose_service=\"scanner\"} | json | __error__=`` | level = `error`",
+                    "expr": "{compose_service=\"scanner\"} | json | __error__=`` | level = `error` | kwargs_scan_type = ``",
                     "queryType": "range",
                     "refId": "A"
                 },
@@ -339,6 +339,6 @@
     "timezone": "",
     "title": "General",
     "uid": "_ENBNOaVk",
-    "version": 11,
+    "version": 13,
     "weekStart": ""
 }
