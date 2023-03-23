@@ -12,9 +12,27 @@ services:
       MYSQL_ROOT_PASSWORD: secret
       MYSQL_USER: dbuser
       MYSQL_PASSWORD: secret
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysql",
+          "-u",
+          "root",
+          "-psecret",
+          "--silent",
+          "--execute",
+          "SELECT 1;",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
     networks:
       - app
   scanner:
+    depends_on:
+      db:
+        condition: service_healthy
     image: registry-scanner:v0.1
     volumes:
       - scanner-cache:/scanner-cache
