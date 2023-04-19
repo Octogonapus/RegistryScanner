@@ -16,11 +16,24 @@ CREATE TABLE IF NOT EXISTS package (
     FOREIGN KEY (registry_uuid) REFERENCES registry(registry_uuid)
 );
 
-CREATE TABLE IF NOT EXISTS packages_time_series (
-    collected datetime,
-    npackages int
-);
-CREATE INDEX idx_packages_time_series_collected ON packages_time_series (collected);
-CREATE EVENT record_npackages ON SCHEDULE EVERY 1 DAY DO
-    INSERT INTO packages_time_series (collected, npackages)
-    VALUES ((SELECT CURRENT_TIMESTAMP), (SELECT COUNT(package_uuid) FROM package));
+CREATE TABLE IF NOT EXISTS finding (
+    id INT NOT NULL AUTO_INCREMENT,
+    `found` DATETIME NOT NULL,
+    `category` ENUM('PULL_REQUEST', 'DATABASE_SCAN') NOT NULL,
+    `type` ENUM('PREEXISTING_UUID', 'PREEXISTING_NAME', 'PACKAGE_USES_HTTP', 'PACKAGE_NON_UNIQUE_NAME', 'PACKAGE_NON_UNIQUE_UUID', 'SHADOWED_PACKAGE'),
+    `level` ENUM('ERROR', 'WARNING') NOT NULL,
+    `body` JSON NOT NULL,
+    PRIMARY KEY (id)
+)
+
+CREATE TABLE IF NOT EXISTS import_error (
+    id INT NOT NULL AUTO_INCREMENT,
+    `found` DATETIME NOT NULL,
+    registry_uuid varchar(36),
+    registry_name varchar(255),
+    registry_repo varchar(255),
+    package_uuid varchar(36),
+    package_name varchar(255),
+    package_repo varchar(255),
+    PRIMARY KEY (id)
+)

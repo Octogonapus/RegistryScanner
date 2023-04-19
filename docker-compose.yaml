@@ -33,7 +33,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    image: registry-scanner:v0.1
+    image: registry-scanner:latest
     volumes:
       - scanner-cache:/scanner-cache
     environment:

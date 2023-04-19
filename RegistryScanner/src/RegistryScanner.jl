@@ -98,12 +98,26 @@ function import_registry(db, registry_dir; force_update_pkgs = [])
     failed_packages = filter(row -> !row.successful_import, package_import_results)
     nfail = nrow(failed_packages)
     @info "Finished importing packages. Successfully imported $nsuccess. Failed to import $nfail."
-    for row in eachrow(failed_packages)
-        @error "Failed to import package uuid=$(row[:package][:uuid]) name=$(row[:package][:name]) repo=$(row[:package][:repo])" exception =
-            row[:exception]
-    end
 
-    @info "Finished!"
+    execute(db, "DELETE FROM import_error")
+    for row in eachrow(failed_packages)
+        execute(
+            prepare(
+                db,
+                "INSERT INTO import_error (`found`, registry_uuid, registry_name, registry_repo, package_uuid, 
+                    package_name, package_repo) VALUES (?,?,?,?,?,?,?);",
+            ),
+            [
+                mysql_datetime(now()),
+                registryfile["uuid"],
+                registryfile["name"],
+                registryfile["repo"],
+                row[:package][:uuid],
+                row[:package][:name],
+                row[:package][:repo],
+            ],
+        )
+    end
 
     return nothing
 end
@@ -215,7 +229,7 @@ function are_packages_unique(packages)
 end
 
 """
-    scan_new_package(db, package_uuid, package_name, pr_url)
+    scan_new_package(db, package_uuid, package_name, package_repo, pr_url)
 
 Scans the package against the DB for anything that is potentially malicious or otherwise bad practice:
 - (error) Packages that have the same UUID.
@@ -224,45 +238,64 @@ Scans the package against the DB for anything that is potentially malicious or o
 The package being scanned should not be in the DB.
 This is for evaluating whether a package could be added to the registry.
 """
-function scan_new_package(db, package_uuid, package_name, pr_url)
-    packages_with_the_same_uuid = DataFrame(execute(prepare(
-        db,
-        """
-        SELECT package_uuid, package_name, registry_repo
-        FROM package
-        LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
-        WHERE package_uuid = ?;
-        """,
-    ), [package_uuid]))
-
-    packages_with_the_same_name = DataFrame(execute(prepare(
-        db,
-        """
-        SELECT package_uuid, package_name, registry_repo
-        FROM package
-        LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
-        WHERE package_name = ?;
-        """,
-    ), [package_name]))
-
-    if !isempty(packages_with_the_same_uuid)
-        for row in eachrow(packages_with_the_same_uuid)
-            @error "PR introduces a new package with a preexisting UUID" type = "finding" scan_type = "PR" package_name =
-                row[:package_name] package_uuid = row[:package_uuid] registry_repo = row[:registry_repo] pr_url
-        end
-    end
-
-    if !isempty(packages_with_the_same_name)
-        for row in eachrow(packages_with_the_same_name)
-            @warn "PR introduces a new package with a preexisting name" type = "finding" scan_type = "PR" package_name =
-                row[:package_name] package_uuid = row[:package_uuid] registry_repo = row[:registry_repo] pr_url
-        end
-    end
-
-    return Dict(
-        :packages_with_the_same_uuid => packages_with_the_same_uuid,
-        :packages_with_the_same_name => packages_with_the_same_name,
+function scan_new_package(db, package_uuid, package_name, package_repo, pr_url)
+    packages_with_the_same_uuid = DataFrame(
+        execute(
+            prepare(
+                db,
+                """
+                SELECT package_uuid, package_name, package_repo, registry_repo, registry_name, r.registry_uuid
+                FROM package
+                LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
+                WHERE package_uuid = ?;
+                """,
+            ),
+            [package_uuid],
+        ),
     )
+
+    packages_with_the_same_name = DataFrame(
+        execute(
+            prepare(
+                db,
+                """
+                SELECT package_uuid, package_name, package_repo, registry_repo, registry_name, r.registry_uuid
+                FROM package
+                LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
+                WHERE package_name = ?;
+                """,
+            ),
+            [package_name],
+        ),
+    )
+
+    for row in eachrow(packages_with_the_same_uuid)
+        execute(
+            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+            [
+                mysql_datetime(now()),
+                "PULL_REQUEST",
+                "PREEXISTING_UUID",
+                "ERROR",
+                json(pr_scan_finding_dict(row, package_uuid, package_name, package_repo, pr_url)),
+            ],
+        )
+    end
+
+    for row in eachrow(packages_with_the_same_name)
+        execute(
+            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+            [
+                mysql_datetime(now()),
+                "PULL_REQUEST",
+                "PREEXISTING_NAME",
+                "WARNING",
+                json(pr_scan_finding_dict(row, package_uuid, package_name, package_repo, pr_url)),
+            ],
+        )
+    end
+
+    return nothing
 end
 
 """
@@ -275,98 +308,156 @@ Scans the DB for anything that is potentially malicious or otherwise bad practic
     - (warn) Packages that have the same name.
 """
 function scan_db(db)
-    packages_using_http = DataFrame(execute(
-        db,
-        """
-        SELECT package_name, package_uuid, registry_repo
-        FROM package
-        LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
-        WHERE package_repo LIKE 'http://%'
-        ORDER BY package_name;
-        """,
-    ))
-
-    packages_with_non_unique_names = DataFrame(execute(
-        db,
-        """
-        SELECT package_name, package_uuid, registry_repo
-        FROM package
-        LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
-        WHERE package_name in (
-            SELECT package_name
+    packages_using_http = DataFrame(
+        execute(
+            db,
+            """
+            SELECT package_name, package_uuid, package_repo, registry_repo, registry_name, r.registry_uuid
             FROM package
-            GROUP BY package_name
-            HAVING COUNT(package_name) > 1
-        )
-        ORDER BY package_name;
-        """,
-    ))
+            LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
+            WHERE package_repo LIKE 'http://%'
+            ORDER BY package_name;
+            """,
+        ),
+    )
 
-    packages_with_non_unique_uuids = DataFrame(execute(
-        db,
-        """
-        SELECT package_name, package_uuid, registry_repo
-        FROM package
-        LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
-        WHERE package_name in (
-            SELECT package_uuid
+    packages_with_non_unique_names = DataFrame(
+        execute(
+            db,
+            """
+            SELECT package_name, package_uuid, package_repo, registry_repo, registry_name, r.registry_uuid
             FROM package
-            GROUP BY package_uuid
-            HAVING COUNT(package_uuid) > 1
-        )
-        ORDER BY package_name;
-        """,
-    ))
+            LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
+            WHERE package_name in (
+                SELECT package_name
+                FROM package
+                GROUP BY package_name
+                HAVING COUNT(package_name) > 1
+            )
+            ORDER BY package_name;
+            """,
+        ),
+    )
 
-    shadowed_packages = DataFrame(execute(
-        db,
-        """
-        SELECT package_name, package_uuid, registry_repo
-        FROM package
-        LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
-        WHERE package_name in (
-            SELECT package_uuid
+    packages_with_non_unique_uuids = DataFrame(
+        execute(
+            db,
+            """
+            SELECT package_name, package_uuid, package_repo, registry_repo, registry_name, r.registry_uuid
             FROM package
-            GROUP BY package_name, package_uuid
-            HAVING COUNT(package_name) AND COUNT(package_uuid) > 1
+            LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
+            WHERE package_name in (
+                SELECT package_uuid
+                FROM package
+                GROUP BY package_uuid
+                HAVING COUNT(package_uuid) > 1
+            )
+            ORDER BY package_name;
+            """,
+        ),
+    )
+
+    shadowed_packages = DataFrame(
+        execute(
+            db,
+            """
+            SELECT package_name, package_uuid, package_repo, registry_repo, registry_name, r.registry_uuid
+            FROM package
+            LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
+            WHERE package_name in (
+                SELECT package_uuid
+                FROM package
+                GROUP BY package_name, package_uuid
+                HAVING COUNT(package_name) AND COUNT(package_uuid) > 1
+            )
+            ORDER BY package_name;
+            """,
+        ),
+    )
+
+    unique_uuids = unique(shadowed_packages[!, :package_uuid])
+    for uuid in unique_uuids
+        rows = filter(:package_uuid => ==(uuid), shadowed_packages)
+        execute(
+            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+            [mysql_datetime(now()), "DATABASE_SCAN", "SHADOWED_PACKAGE", "ERROR", json(db_scan_finding_dict(rows))],
         )
-        ORDER BY package_name;
-        """,
-    ))
-
-    if !isempty(shadowed_packages)
-        for row in eachrow(shadowed_packages)
-            @error "Found shadowed package" type = "finding" scan_type = "full" package_name = row[:package_name] package_uuid =
-                row[:package_uuid] registry_repo = row[:registry_repo]
-        end
     end
 
-    if !isempty(packages_using_http)
-        for row in eachrow(packages_using_http)
-            @error "Found packages using HTTP" type = "finding" scan_type = "full" package_name = row[:package_name] package_uuid =
-                row[:package_uuid] registry_repo = row[:registry_repo]
-        end
+    for row in eachrow(packages_using_http)
+        execute(
+            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+            [mysql_datetime(now()), "DATABASE_SCAN", "PACKAGE_USES_HTTP", "ERROR", json(db_scan_finding_dict(row))],
+        )
     end
 
-    if !isempty(packages_with_non_unique_uuids)
-        for row in eachrow(packages_with_non_unique_uuids)
-            @error "Found packages with non-unique UUIDs" type = "finding" scan_type = "full" package_name =
-                row[:package_name] package_uuid = row[:package_uuid] registry_repo = row[:registry_repo]
-        end
+    unique_uuids = unique(packages_with_non_unique_uuids[!, :package_uuid])
+    for uuid in unique_uuids
+        rows = filter(:package_uuid => ==(uuid), packages_with_non_unique_uuids)
+        execute(
+            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+            [
+                mysql_datetime(now()),
+                "DATABASE_SCAN",
+                "PACKAGE_NON_UNIQUE_UUID",
+                "WARNING",
+                json(db_scan_finding_dict(rows)),
+            ],
+        )
     end
 
-    if !isempty(packages_with_non_unique_names)
-        for row in eachrow(packages_with_non_unique_names)
-            @warn "Found package with non-unique name" type = "finding" scan_type = "full" package_name =
-                row[:package_name] package_uuid = row[:package_uuid] registry_repo = row[:registry_repo]
-        end
+    unique_names = unique(packages_with_non_unique_names[!, :package_name])
+    for name in unique_names
+        rows = filter(:package_name => ==(name), packages_with_non_unique_names)
+        execute(
+            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+            [
+                mysql_datetime(now()),
+                "DATABASE_SCAN",
+                "PACKAGE_NON_UNIQUE_NAME",
+                "WARNING",
+                json(db_scan_finding_dict(rows)),
+            ],
+        )
     end
 
+    return nothing
+end
+
+function db_scan_finding_dict(rows::DataFrame)
     return Dict(
-        :packages_using_http => packages_using_http,
-        :packages_with_non_unique_names => packages_with_non_unique_names,
-        :packages_with_non_unique_uuids => packages_with_non_unique_uuids,
-        :shadowed_packages => shadowed_packages,
+        "registry_uuids" => rows[!, :registry_uuid],
+        "registry_repos" => rows[!, :registry_repo],
+        "registry_names" => rows[!, :registry_name],
+        "package_uuids" => rows[!, :package_uuid],
+        "package_names" => rows[!, :package_name],
+        "package_repos" => rows[!, :package_repo],
+    )
+end
+
+function db_scan_finding_dict(row::DataFrameRow)
+    return Dict(
+        "registry_uuid" => row[!, :registry_uuid],
+        "registry_repo" => row[!, :registry_repo],
+        "registry_name" => row[!, :registry_name],
+        "package_uuid" => row[!, :package_uuid],
+        "package_name" => row[!, :package_name],
+        "package_repo" => row[!, :package_repo],
+    )
+end
+
+function pr_scan_finding_dict(row::DataFrameRow, package_uuid, package_name, package_repo, pr_url)
+    return Dict(
+        "registry_uuid" => row[:registry_uuid],
+        "registry_repo" => row[:registry_repo],
+        "registry_name" => row[:registry_name],
+        "package_uuid_in_db" => row[:package_uuid],
+        "package_name_in_db" => row[:package_name],
+        "package_repo_in_db" => row[:package_repo],
+        "package_uuid_in_pr" => package_uuid,
+        "package_name_in_pr" => package_name,
+        "package_repo_in_pr" => package_repo,
+        "pr_url" => pr_url,
     )
 end
 
@@ -427,12 +518,11 @@ function scan_registry(registry::GitHubRegistry, since_time::ZonedDateTime)
         resetTime = Dates.now() - Dates.unix2datetime(reset)
         @info "GraphQL rate limit for registry $(registry.owner)/$(registry.name) has $remaining remaining and resets in $(nicetime(resetTime))"
     end
-    @debug "query response" r
     d = JSON.parse(r.Data)
 
     pull_requests = map(it -> it["node"], d["data"]["repository"]["pullRequests"]["edges"])
     for pr in pull_requests
-        @debug url = pr["url"] updatedAt = pr["updatedAt"] since_time
+        @debug "pull_request before filtering" pr
     end
     filter!(it -> ZonedDateTime(it["updatedAt"], dateformat"yyyy-mm-ddTHH:MM:SSz") > since_time, pull_requests)
     @debug "pull_requests after date filtering" pull_requests
@@ -505,7 +595,10 @@ function scan_diff(registry::GitHubRegistry, head_ref_name)
         pkg_uuid = match(pkg_diff_regex, resp).captures[begin]
         registryfile = TOML.parsefile("Registry.toml")
         pkg_name = registryfile["packages"][pkg_uuid]["name"]
-        return pkg_uuid, pkg_name
+        pkgdir_relative_path = registryfile["packages"][pkg_uuid]["path"]
+        pkgfile = TOML.parsefile(joinpath(pkgdir_relative_path, "Package.toml"))
+        pkg_repo = pkgfile["repo"]
+        return pkg_uuid, pkg_name, pkg_repo
     end
 end
 
@@ -522,9 +615,9 @@ function do_registry_scans(db, registries, last_scan_time)
 
         for pr in eachrow(pull_requests)
             @info "Scanning PR $(pr[:url])"
-            pkg_uuid, pkg_name = scan_diff(registry, pr[:head_ref_name])
+            pkg_uuid, pkg_name, pkg_repo = scan_diff(registry, pr[:head_ref_name])
             @debug registry pr[:head_ref_name] pkg_uuid pkg_name
-            scan_new_package(db, pkg_uuid, pkg_name, pr[:url])
+            scan_new_package(db, pkg_uuid, pkg_name, pkg_repo, pr[:url])
             @info "Scan done"
         end
     end
