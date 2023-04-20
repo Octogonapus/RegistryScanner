@@ -4,7 +4,7 @@ Scans registries for possible maliscious behavior, security holes, and misconfig
 
 ## Usage
 
-Modify the `REGISTRIES_TO_SCAN` environment variable in [docker-compose.yml](./docker-compose.yml).
+Modify the `REGISTRIES_TO_SCAN` environment variable in [docker-compose.yaml](./docker-compose.yaml).
 Add all the public registries you use, along with any private registries you have.
 Only GitHub registries are supported.
 
