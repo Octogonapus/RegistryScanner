@@ -12,6 +12,7 @@ Create secrets where necessary.
 All public registries can use the same secret; this secret only needs public repository scope.
 Private registries need private repository scope.
 RegistryScanner uses GraphQL, so these secrets must be classic GitHub secrets; the new fine-grained secrets do not support GraphQL at this time.
+A file named `github_token.txt` containing a personal access token is required by default.
 Secret names in the `REGISTRIES_TO_SCAN` environment variable must be the same names as the entries under the `secrets:` block in the compose file.
 View the default compose file to see how to add secrets.
 
