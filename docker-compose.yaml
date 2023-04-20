@@ -71,6 +71,7 @@ services:
       DB_PASS: secret
       DB_PORT: 3306
       DB_DATABASE: main
+      TZ: America/New_York # which timezone the data is displayed in
     networks:
       - app
     ports:

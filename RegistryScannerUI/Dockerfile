@@ -14,6 +14,7 @@ WORKDIR /app
 RUN npm ci && npm run build
 
 FROM node:18-alpine
+RUN apk add --no-cache tzdata
 RUN mkdir /app
 COPY --from=builder /app/build /app/build
 COPY --from=builder /app/package.json /app/package-lock.json /app/
