@@ -8,7 +8,7 @@ const db = knex({
 		host: env.DB_HOST ?? "127.0.0.1",
 		port: parseInt(env.DB_PORT ?? "3306"),
 		user: env.DB_USER ?? "root",
-		password: env.DB_PASSWORD ?? "",
+		password: env.DB_PASS ?? "",
 		database: env.DB_DATABASE ?? "main",
 		typeCast: mysqlTypeCast,
 		ssl: env.SSL_SCHEME,

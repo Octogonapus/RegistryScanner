@@ -60,6 +60,25 @@ services:
       driver: loki
       options:
         loki-url: http://localhost:3100/loki/api/v1/push
+  scanner-ui:
+    depends_on:
+      db:
+        condition: service_healthy
+    image: registry-scanner-ui:latest
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASS: secret
+      DB_PORT: 3306
+      DB_DATABASE: main
+    networks:
+      - app
+    ports:
+      - 4000:3000
+    logging:
+      driver: loki
+      options:
+        loki-url: http://localhost:3100/loki/api/v1/push
   grafana:
     image: grafana/grafana-oss:latest
     volumes:
