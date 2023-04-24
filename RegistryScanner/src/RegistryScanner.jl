@@ -400,7 +400,7 @@ function scan_db(db)
                 mysql_datetime(now()),
                 "DATABASE_SCAN",
                 "PACKAGE_NON_UNIQUE_UUID",
-                "WARNING",
+                "ERROR",
                 json(db_scan_finding_dict(rows)),
             ],
         )
