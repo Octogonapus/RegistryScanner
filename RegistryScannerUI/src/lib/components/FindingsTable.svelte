@@ -38,7 +38,7 @@
 	}
 </script>
 
-<div class="m-2 flex flex-col space-y-2">
+<div class="m-2">
 	<FindingSelection finding={selectedFinding} on:dismiss_finding />
 	<Table source={table} interactive={true} on:selected={tableOnSelected} />
 </div>

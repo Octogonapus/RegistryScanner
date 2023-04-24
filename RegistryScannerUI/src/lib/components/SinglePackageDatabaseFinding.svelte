@@ -32,6 +32,8 @@
 			],
 		],
 	}
+
+	// TODO: allow dismissing this finding. must also dismiss all the similar findings that got filtered out in the DB layer
 </script>
 
 <div class="flex flex-col">

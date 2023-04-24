@@ -72,11 +72,31 @@ function uniqueFindings(rows: any[]) {
 		return JSON.stringify([it["category"], it["type"], it["level"], it["body"]])
 	}
 
-	const seen = new Set()
-	return rows.filter((it) => {
-		const k = key(it)
-		return seen.has(k) ? false : seen.add(k)
-	})
+	const mergedFindingGroups = new Map()
+	for (const row of rows) {
+		const k = key(row)
+		if (!mergedFindingGroups.has(k)) {
+			mergedFindingGroups.set(k, [])
+		}
+		mergedFindingGroups.get(k).push(row)
+	}
+
+	const mergedFindings = []
+	for (const key of mergedFindingGroups.keys()) {
+		const group = mergedFindingGroups.get(key) as any[]
+		const mergedFinding = {
+			mergedFinding: true,
+			ids: group.map((it) => it.id),
+			found: group[0].found,
+			category: group[0].category,
+			type: group[0].type,
+			level: group[0].level,
+			body: group[0].body,
+		}
+		mergedFindings.push(mergedFinding)
+	}
+
+	return mergedFindings
 }
 
 function mysqlTypeCast(field: any, next: any) {

@@ -34,9 +34,9 @@
 	}
 </script>
 
-<div>
+<div class="m-2">
 	{#if showMultiPackageDatabaseFinding}
-		<MultiPackageDatabaseFinding {finding} />
+		<MultiPackageDatabaseFinding {finding} on:dismiss_finding />
 	{:else if showSinglePackageDatabaseFinding}
 		<SinglePackageDatabaseFinding {finding} />
 	{:else if showPRFinding}
