@@ -68,7 +68,7 @@
 </script>
 
 <div class="m-2">
-	<h3 class="mb-2">{title}</h3>
+	<h3 class="mb-1">{title}</h3>
 	<h4 class="mb-2">Package in Pull Request</h4>
 	<Table source={packageInPRTable} />
 	<h4 class="mb-2">Package in Database</h4>

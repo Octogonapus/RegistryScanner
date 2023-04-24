@@ -42,6 +42,6 @@
 	}
 </script>
 
-<h3 class="mb-2">{title}</h3>
+<h3 class="mb-1">{title}</h3>
 <Table source={table} />
 <button type="button" class="btn variant-filled-error" on:click={onDismissFinding}>Dismiss Finding</button>
