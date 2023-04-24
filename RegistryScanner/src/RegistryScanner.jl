@@ -346,7 +346,7 @@ function scan_db(db)
             SELECT package_name, package_uuid, package_repo, registry_repo, registry_name, r.registry_uuid
             FROM package
             LEFT JOIN registry r on r.registry_uuid = package.registry_uuid
-            WHERE package_name in (
+            WHERE package_uuid in (
                 SELECT package_uuid
                 FROM package
                 GROUP BY package_uuid
