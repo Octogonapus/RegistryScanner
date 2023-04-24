@@ -40,5 +40,6 @@
 
 <div class="m-2">
 	<FindingSelection finding={selectedFinding} on:dismiss_finding />
+	<h3>All Findings</h3>
 	<Table source={table} interactive={true} on:selected={tableOnSelected} />
 </div>
