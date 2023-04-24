@@ -1,8 +1,44 @@
 # RegistryScanner
 
-Scans registries for possible maliscious behavior, security holes, and misconfigurations.
+Scans registries for possible maliscious behavior and misconfigurations.
 
-## Usage
+- [RegistryScanner](#registryscanner)
+  - [Capabilities](#capabilities)
+  - [Deployment](#deployment)
+    - [Configuration](#configuration)
+    - [Alerts](#alerts)
+
+## Capabilities
+
+RegistryScanner can find:
+
+- Packages and pull requests introducing packages that use the same name and/or UUID as existing packages
+- Packages that are configured with bare HTTP transport
+- Registry modifications (e.g. packages that have had their URLs changed)
+- Registry misconfigurations
+  - Inconsistent package lists and registry contents
+  - Duplicate packages
+
+RegistryScanner can scan and import from any Git registry.
+Currently, only GitHub is supported for pull request scans.
+
+## Deployment
+
+RegistryScanner comes with a [Docker compose file](./docker-compose.yaml) for easy deployment.
+The compose file includes:
+
+- The scanner backend
+- A front end, which runs on [localhost:4000](http://localhost:4000)
+- A database
+- Grafana, which provides observability and runs on [localhost:3000](http://localhost:3000)
+- Loki, which collects logs from the other services and can be accessed via Grafana
+
+RegistryScanner is at its core a Julia backend service which runs continuously to scan registries and pull requests.
+This service can be deployed independently from the rest of the services specified in the compose file if you want.
+All it needs is a database and some secrets for GitHub integration.
+Look at the [compose file](./docker-compose.yaml) for more.
+
+### Configuration
 
 Modify the `REGISTRIES_TO_SCAN` environment variable in [docker-compose.yaml](./docker-compose.yaml).
 Add all the public registries you use, along with any private registries you have.
@@ -28,3 +64,8 @@ The main UI runs on [localhost:4000](http://localhost:4000).
 
 Grafana and Loki are available on [localhost:3000](http://localhost:3000).
 View logs via Expore > Loki > `compose_service = scanner`.
+
+### Alerts
+
+Alerts for errors (not findings) are pre-configured, but delivery is not.
+Configure the default contact point in Grafana with your preferred integration to receive these alerts.
