@@ -81,15 +81,22 @@
 	}
 </script>
 
-<div class="m-2 flex flex-col space-y-2">
-	<div class="m-2">
-		<h3 class="mb-2">Selected Package</h3>
-		<Table source={selectedPackageTable} />
-		<h3 class="mb-2">Similar Packages in the Database</h3>
-		<Table source={packagesInDBTable} class="pb-2" />
-		<button type="button" class="btn variant-filled-warning" on:click={forceImportPackage}>Import Package Anyway</button
-		>
-	</div>
-	<h2 class="mb-2">Package Import Errors</h2>
-	<Table source={table} interactive={true} on:selected={tableOnSelected} />
+<div class="m-2">
+	{#if importErrors.length == 0}
+		<h3>No Import Errors</h3>
+	{:else}
+		{#if selectedImportError}
+			<div class="m-2">
+				<h3 class="mb-2">Selected Package</h3>
+				<Table source={selectedPackageTable} />
+				<h3 class="mb-2">Similar Packages in the Database</h3>
+				<Table source={packagesInDBTable} class="pb-2" />
+				<button type="button" class="btn variant-filled-warning" on:click={forceImportPackage}
+					>Import Package Anyway</button
+				>
+			</div>
+		{/if}
+		<h2 class="mb-2">Package Import Errors</h2>
+		<Table source={table} interactive={true} on:selected={tableOnSelected} />
+	{/if}
 </div>
