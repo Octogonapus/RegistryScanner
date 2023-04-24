@@ -21,8 +21,7 @@ RegistryScanner can find:
   - Inconsistent package lists and registry contents
   - Duplicate packages
 
-RegistryScanner can scan and import from any Git registry.
-Currently, only GitHub is supported for pull request scans.
+Currently, only GitHub registries are supported.
 
 ## Deployment
 
