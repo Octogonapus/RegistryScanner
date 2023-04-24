@@ -1,6 +1,8 @@
 # RegistryScanner
 
-Scans registries for possible maliscious behavior and misconfigurations.
+Scans Julia registries for possible maliscious behavior and misconfigurations.
+
+![](./assets/findings_page.png)
 
 - [RegistryScanner](#registryscanner)
   - [Capabilities](#capabilities)
@@ -33,7 +35,7 @@ The compose file includes:
 - Grafana, which provides observability and runs on [localhost:3000](http://localhost:3000)
 - Loki, which collects logs from the other services and can be accessed via Grafana
 
-RegistryScanner is at its core a Julia backend service which runs continuously to scan registries and pull requests.
+RegistryScanner is at its core a service which runs continuously to scan registries and pull requests, generating findings which are inserted into a database.
 This service can be deployed independently from the rest of the services specified in the compose file if you want.
 All it needs is a database and some secrets for GitHub integration.
 Look at the [compose file](./docker-compose.yaml) for more.
