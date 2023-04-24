@@ -38,7 +38,7 @@
 	{#if showMultiPackageDatabaseFinding}
 		<MultiPackageDatabaseFinding {finding} on:dismiss_finding />
 	{:else if showSinglePackageDatabaseFinding}
-		<SinglePackageDatabaseFinding {finding} />
+		<SinglePackageDatabaseFinding {finding} on:dismiss_finding />
 	{:else if showPRFinding}
 		<PRFinding {finding} on:dismiss_finding />
 	{/if}

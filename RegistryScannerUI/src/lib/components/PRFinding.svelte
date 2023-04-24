@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dismissFinding } from "$lib/util"
 	import { Table } from "@skeletonlabs/skeleton"
 	import type { TableSource } from "@skeletonlabs/skeleton"
 	import { createEventDispatcher } from "svelte"
@@ -59,9 +60,8 @@
 		} as TableSource
 	}
 
-	async function dismissFinding() {
-		await fetch(`/finding/${finding.id}`, { method: "DELETE" })
-		dispatch("dismiss_finding")
+	async function onDismissFinding() {
+		dismissFinding(finding, dispatch)
 	}
 
 	let packagesInDBTable = getPackagesInDBTable()
@@ -75,5 +75,5 @@
 	{#await packagesInDBTable then table}
 		<Table source={table} class="pb-2" />
 	{/await}
-	<button type="button" class="btn variant-filled-error" on:click={dismissFinding}>Dismiss Finding</button>
+	<button type="button" class="btn variant-filled-error" on:click={onDismissFinding}>Dismiss Finding</button>
 </div>

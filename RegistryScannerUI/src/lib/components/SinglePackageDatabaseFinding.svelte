@@ -1,8 +1,12 @@
 <script lang="ts">
+	import { dismissFinding } from "$lib/util"
 	import { Table } from "@skeletonlabs/skeleton"
 	import type { TableSource } from "@skeletonlabs/skeleton"
+	import { createEventDispatcher } from "svelte"
 
 	export let finding: any
+
+	const dispatch = createEventDispatcher()
 
 	let title = ""
 	$: {
@@ -33,10 +37,11 @@
 		],
 	}
 
-	// TODO: allow dismissing this finding. must also dismiss all the similar findings that got filtered out in the DB layer
+	async function onDismissFinding() {
+		dismissFinding(finding, dispatch)
+	}
 </script>
 
-<div class="flex flex-col">
-	<h3 class="mb-2">{title}</h3>
-	<Table source={table} />
-</div>
+<h3 class="mb-2">{title}</h3>
+<Table source={table} />
+<button type="button" class="btn variant-filled-error" on:click={onDismissFinding}>Dismiss Finding</button>

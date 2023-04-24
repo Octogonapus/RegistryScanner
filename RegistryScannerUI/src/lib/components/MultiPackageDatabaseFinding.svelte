@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { dismissFinding } from "$lib/util"
 	import { Table } from "@skeletonlabs/skeleton"
 	import type { TableSource } from "@skeletonlabs/skeleton"
 	import { createEventDispatcher } from "svelte"
@@ -43,16 +44,11 @@
 		}
 	}
 
-	async function dismissFinding() {
-		if (finding.mergedFinding) {
-			await fetch(`/finding/${finding.ids}`, { method: "DELETE" })
-		} else {
-			await fetch(`/finding/${finding.id}`, { method: "DELETE" })
-		}
-		dispatch("dismiss_finding")
+	async function onDismissFinding() {
+		dismissFinding(finding, dispatch)
 	}
 </script>
 
 <h3 class="mb-2">{title}</h3>
 <Table source={table} class="pb-2" />
-<button type="button" class="btn variant-filled-error" on:click={dismissFinding}>Dismiss Finding</button>
+<button type="button" class="btn variant-filled-error" on:click={onDismissFinding}>Dismiss Finding</button>
