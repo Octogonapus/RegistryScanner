@@ -47,9 +47,9 @@ Only GitHub registries are supported.
 
 Create secrets where necessary.
 All public registries can use the same secret; this secret only needs public repository scope.
-Private registries need private repository scope.
+Secrets for accessing private registries need private repository scope.
 RegistryScanner uses GraphQL, so these secrets must be classic GitHub secrets; the new fine-grained secrets do not support GraphQL at this time.
-A file named `github_token.txt` containing a personal access token is required by default.
+A file named `github_token.txt` containing a personal access token is required by default, but this is configurable in the compose file.
 Secret names in the `REGISTRIES_TO_SCAN` environment variable must be the same names as the entries under the `secrets:` block in the compose file.
 View the default compose file to see how to add secrets.
 
@@ -58,6 +58,7 @@ Build and deploy:
 ```sh
 docker build RegistryScanner -t registry-scanner:latest
 docker build RegistryScannerUI -t registry-scanner-ui:latest
+echo 'your_gh_token' > github_token.txt
 docker compose up -d
 ```
 
