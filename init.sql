@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS finding (
     `level` ENUM('ERROR', 'WARNING') NOT NULL,
     `body` JSON NOT NULL,
     PRIMARY KEY (id)
-)
+);
 
 CREATE TABLE IF NOT EXISTS import_error (
     id INT NOT NULL AUTO_INCREMENT,
@@ -36,4 +36,4 @@ CREATE TABLE IF NOT EXISTS import_error (
     package_name varchar(255),
     package_repo varchar(255),
     PRIMARY KEY (id)
-)
+);
