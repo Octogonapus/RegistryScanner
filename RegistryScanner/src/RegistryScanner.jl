@@ -2,7 +2,7 @@ module RegistryScanner
 
 using DBInterface, TOML, DataFrames, PrettyTables, MySQL, Diana, Dates, JSON, TimeZones, HTTP
 using LoggingFormats, LoggingExtras
-using DBInterface: execute, prepare
+using DBInterface: execute, prepare, close!
 import Base.floor
 
 export import_registry,
@@ -100,23 +100,27 @@ function import_registry(db, registry_dir; force_update_pkgs = [])
     @info "Finished importing packages. Successfully imported $nsuccess. Failed to import $nfail."
 
     execute(db, "DELETE FROM import_error")
-    for row in eachrow(failed_packages)
-        execute(
-            prepare(
-                db,
-                "INSERT INTO import_error (`found`, registry_uuid, registry_name, registry_repo, package_uuid, 
-                    package_name, package_repo) VALUES (?,?,?,?,?,?,?);",
-            ),
-            [
-                mysql_datetime(now()),
-                registryfile["uuid"],
-                registryfile["name"],
-                registryfile["repo"],
-                row[:package][:uuid],
-                row[:package][:name],
-                row[:package][:repo],
-            ],
-        )
+    with_stmt(
+        prepare(
+            db,
+            "INSERT INTO import_error (`found`, registry_uuid, registry_name, registry_repo, package_uuid, 
+                package_name, package_repo) VALUES (?,?,?,?,?,?,?);",
+        ),
+    ) do stmt
+        for row in eachrow(failed_packages)
+            execute(
+                stmt,
+                [
+                    mysql_datetime(now()),
+                    registryfile["uuid"],
+                    registryfile["name"],
+                    registryfile["repo"],
+                    row[:package][:uuid],
+                    row[:package][:name],
+                    row[:package][:repo],
+                ],
+            )
+        end
     end
 
     return nothing
@@ -129,18 +133,22 @@ Imports the registry if it does not already exist or throws an error if it exist
 """
 function idempotent_import_registry_or_fail(db, uuid, name, repo)
     try
-        execute(prepare(db, "INSERT INTO registry VALUES (?,?,?);"), [uuid, name, repo])
-        @debug "Imported registry" uuid name repo
+        with_stmt(prepare(db, "INSERT INTO registry VALUES (?,?,?);")) do stmt
+            execute(stmt, [uuid, name, repo])
+            @debug "Imported registry" uuid name repo
+        end
     catch ex
         if ex isa MySQL.API.StmtError && ex.errno == 1062 # duplicate entry for primary key
-            df = DataFrame(execute(prepare(db, "SELECT * FROM registry WHERE registry_uuid = ?;"), [uuid]))
-            uuid_db = df[!, :registry_uuid][begin]
-            name_db = df[!, :registry_name][begin]
-            repo_db = df[!, :registry_repo][begin]
-            if uuid_db != uuid || name_db != name || repo_db != repo
-                error("Registry to import is different than existing registry in the DB. \
-                To import: uuid=$uuid, name=$name, repo=$repo. \
-                In DB: uuid=$uuid_db, name=$name_db, repo=$repo_db.")
+            with_stmt(prepare(db, "SELECT * FROM registry WHERE registry_uuid = ?;")) do stmt
+                df = DataFrame(execute(stmt, [uuid]))
+                uuid_db = df[!, :registry_uuid][begin]
+                name_db = df[!, :registry_name][begin]
+                repo_db = df[!, :registry_repo][begin]
+                if uuid_db != uuid || name_db != name || repo_db != repo
+                    error("Registry to import is different than existing registry in the DB. \
+                    To import: uuid=$uuid, name=$name, repo=$repo. \
+                    In DB: uuid=$uuid_db, name=$name_db, repo=$repo_db.")
+                end
             end
         else
             rethrow()
@@ -158,38 +166,39 @@ Imports the package if it does not already exist or throws an error if it exists
 function idempotent_import_package_or_fail(db, registry_uuid, package_uuid, name, repo; force_update_pkgs)
     try
         if (registry_uuid, package_uuid) ∈ force_update_pkgs
-            execute(
+            with_stmt(
                 prepare(
                     db,
                     "INSERT INTO package VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE package_name=?, package_repo=?;",
                 ),
-                [package_uuid, registry_uuid, name, repo, name, repo],
-            )
+            ) do stmt
+                execute(stmt, [package_uuid, registry_uuid, name, repo, name, repo])
+
+            end
         else
-            execute(prepare(db, "INSERT INTO package VALUES (?,?,?,?);"), [package_uuid, registry_uuid, name, repo])
+            with_stmt(prepare(db, "INSERT INTO package VALUES (?,?,?,?);")) do stmt
+                execute(stmt, [package_uuid, registry_uuid, name, repo])
+            end
         end
         @debug "Imported package" registry_uuid package_uuid name repo
     catch ex
         if ex isa MySQL.API.StmtError && ex.errno == 1062 # duplicate entry for primary key
-            df = DataFrame(
-                execute(
-                    prepare(db, "SELECT * FROM package WHERE package_uuid = ? AND registry_uuid = ?;"),
-                    [package_uuid, registry_uuid],
-                ),
-            )
-            registry_uuid_db = df[!, :registry_uuid][begin]
-            package_uuid_db = df[!, :package_uuid][begin]
-            name_db = df[!, :package_name][begin]
-            repo_db = df[!, :package_repo][begin]
-            if registry_uuid_db != registry_uuid ||
-               package_uuid_db != package_uuid ||
-               name_db != name ||
-               repo_db != repo
-                error(
-                    "Package to import is different than existing package in the DB. \
-                    To import: registry_uuid=$registry_uuid, package_uuid=$package_uuid, name=$name, repo=$repo. \
-                    In DB: registry_uuid_db=$registry_uuid_db, package_uuid_db=$package_uuid_db, name=$name_db, repo=$repo_db.",
-                )
+            with_stmt(prepare(db, "SELECT * FROM package WHERE package_uuid = ? AND registry_uuid = ?;")) do stmt
+                df = DataFrame(execute(stmt, [package_uuid, registry_uuid]))
+                registry_uuid_db = df[!, :registry_uuid][begin]
+                package_uuid_db = df[!, :package_uuid][begin]
+                name_db = df[!, :package_name][begin]
+                repo_db = df[!, :package_repo][begin]
+                if registry_uuid_db != registry_uuid ||
+                   package_uuid_db != package_uuid ||
+                   name_db != name ||
+                   repo_db != repo
+                    error(
+                        "Package to import is different than existing package in the DB. \
+                        To import: registry_uuid=$registry_uuid, package_uuid=$package_uuid, name=$name, repo=$repo. \
+                        In DB: registry_uuid_db=$registry_uuid_db, package_uuid_db=$package_uuid_db, name=$name_db, repo=$repo_db.",
+                    )
+                end
             end
         else
             rethrow()
@@ -239,60 +248,66 @@ The package being scanned should not be in the DB.
 This is for evaluating whether a package could be added to the registry.
 """
 function scan_new_package(db, package_uuid, package_name, package_repo, pr_url)
-    packages_with_the_same_uuid = DataFrame(
-        execute(
-            prepare(
-                db,
-                """
-                SELECT package_uuid, package_name, package_repo, registry_repo, registry_name, r.registry_uuid
-                FROM package
-                LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
-                WHERE package_uuid = ?;
-                """,
-            ),
-            [package_uuid],
+    packages_with_the_same_uuid = with_stmt(
+        prepare(
+            db,
+            """
+            SELECT package_uuid, package_name, package_repo, registry_repo, registry_name, r.registry_uuid
+            FROM package
+            LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
+            WHERE package_uuid = ?;
+            """,
         ),
-    )
-
-    packages_with_the_same_name = DataFrame(
-        execute(
-            prepare(
-                db,
-                """
-                SELECT package_uuid, package_name, package_repo, registry_repo, registry_name, r.registry_uuid
-                FROM package
-                LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
-                WHERE package_name = ?;
-                """,
-            ),
-            [package_name],
-        ),
-    )
-
-    for row in eachrow(packages_with_the_same_uuid)
-        execute(
-            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
-            [
-                mysql_datetime(now()),
-                "PULL_REQUEST",
-                "PREEXISTING_UUID",
-                "ERROR",
-                json(pr_scan_finding_dict(row, package_uuid, package_name, package_repo, pr_url)),
-            ],
-        )
+    ) do stmt
+        DataFrame(execute(stmt, [package_uuid]))
     end
 
-    for row in eachrow(packages_with_the_same_name)
-        execute(
-            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
-            [
-                mysql_datetime(now()),
-                "PULL_REQUEST",
-                "PREEXISTING_NAME",
-                "WARNING",
-                json(pr_scan_finding_dict(row, package_uuid, package_name, package_repo, pr_url)),
-            ],
-        )
+    packages_with_the_same_name = with_stmt(
+        prepare(
+            db,
+            """
+            SELECT package_uuid, package_name, package_repo, registry_repo, registry_name, r.registry_uuid
+            FROM package
+            LEFT JOIN registry r on package.registry_uuid = r.registry_uuid
+            WHERE package_name = ?;
+            """,
+        ),
+    ) do stmt
+        DataFrame(execute(stmt, [package_name]))
+    end
+
+    with_stmt(
+        prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+    ) do stmt
+        for row in eachrow(packages_with_the_same_uuid)
+            execute(
+                stmt,
+                [
+                    mysql_datetime(now()),
+                    "PULL_REQUEST",
+                    "PREEXISTING_UUID",
+                    "ERROR",
+                    json(pr_scan_finding_dict(row, package_uuid, package_name, package_repo, pr_url)),
+                ],
+            )
+        end
+    end
+
+    with_stmt(
+        prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+    ) do stmt
+        for row in eachrow(packages_with_the_same_name)
+            execute(
+                stmt,
+                [
+                    mysql_datetime(now()),
+                    "PULL_REQUEST",
+                    "PREEXISTING_NAME",
+                    "WARNING",
+                    json(pr_scan_finding_dict(row, package_uuid, package_name, package_repo, pr_url)),
+                ],
+            )
+        end
     end
 
     return nothing
@@ -376,49 +391,65 @@ function scan_db(db)
     )
 
     unique_uuids = unique(shadowed_packages[!, :package_uuid])
-    for uuid in unique_uuids
-        rows = filter(:package_uuid => ==(uuid), shadowed_packages)
-        execute(
-            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
-            [mysql_datetime(now()), "DATABASE_SCAN", "SHADOWED_PACKAGE", "ERROR", json(db_scan_finding_dict(rows))],
-        )
+    with_stmt(
+        prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+    ) do stmt
+        for uuid in unique_uuids
+            rows = filter(:package_uuid => ==(uuid), shadowed_packages)
+            execute(
+                stmt,
+                [mysql_datetime(now()), "DATABASE_SCAN", "SHADOWED_PACKAGE", "ERROR", json(db_scan_finding_dict(rows))],
+            )
+        end
     end
 
-    for row in eachrow(packages_using_http)
-        execute(
-            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
-            [mysql_datetime(now()), "DATABASE_SCAN", "PACKAGE_USES_HTTP", "ERROR", json(db_scan_finding_dict(row))],
-        )
+    with_stmt(
+        prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+    ) do stmt
+        for row in eachrow(packages_using_http)
+            execute(
+                stmt,
+                [mysql_datetime(now()), "DATABASE_SCAN", "PACKAGE_USES_HTTP", "ERROR", json(db_scan_finding_dict(row))],
+            )
+        end
     end
 
     unique_uuids = unique(packages_with_non_unique_uuids[!, :package_uuid])
-    for uuid in unique_uuids
-        rows = filter(:package_uuid => ==(uuid), packages_with_non_unique_uuids)
-        execute(
-            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
-            [
-                mysql_datetime(now()),
-                "DATABASE_SCAN",
-                "PACKAGE_NON_UNIQUE_UUID",
-                "ERROR",
-                json(db_scan_finding_dict(rows)),
-            ],
-        )
+    with_stmt(
+        prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+    ) do stmt
+        for uuid in unique_uuids
+            rows = filter(:package_uuid => ==(uuid), packages_with_non_unique_uuids)
+            execute(
+                stmt,
+                [
+                    mysql_datetime(now()),
+                    "DATABASE_SCAN",
+                    "PACKAGE_NON_UNIQUE_UUID",
+                    "ERROR",
+                    json(db_scan_finding_dict(rows)),
+                ],
+            )
+        end
     end
 
     unique_names = unique(packages_with_non_unique_names[!, :package_name])
-    for name in unique_names
-        rows = filter(:package_name => ==(name), packages_with_non_unique_names)
-        execute(
-            prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
-            [
-                mysql_datetime(now()),
-                "DATABASE_SCAN",
-                "PACKAGE_NON_UNIQUE_NAME",
-                "WARNING",
-                json(db_scan_finding_dict(rows)),
-            ],
-        )
+    with_stmt(
+        prepare(db, "INSERT INTO finding (`found`, `category`, `type`, `level`, `body`) VALUES (?,?,?,?,?);"),
+    ) do stmt
+        for name in unique_names
+            rows = filter(:package_name => ==(name), packages_with_non_unique_names)
+            execute(
+                stmt,
+                [
+                    mysql_datetime(now()),
+                    "DATABASE_SCAN",
+                    "PACKAGE_NON_UNIQUE_NAME",
+                    "WARNING",
+                    json(db_scan_finding_dict(rows)),
+                ],
+            )
+        end
     end
 
     return nothing
@@ -731,6 +762,14 @@ function nicetime(period::Dates.CompoundPeriod)
     catch ex
         @warn "Failed to convert compound period" exception = (ex, catch_backtrace())
         return "error"
+    end
+end
+
+function with_stmt(f, stmt)
+    return try
+        f(stmt)
+    finally
+        close!(stmt)
     end
 end
 
