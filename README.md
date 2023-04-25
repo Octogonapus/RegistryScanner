@@ -12,7 +12,7 @@ Scans Julia registries for possible malicious behavior and misconfigurations.
 
 ## Capabilities
 
-RegistryScanner can find:
+RegistryScanner can find and alert you about:
 
 - Packages and pull requests introducing packages that use the same name and/or UUID as existing packages
 - Packages that are configured with bare HTTP transport
