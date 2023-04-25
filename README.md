@@ -1,6 +1,6 @@
 # RegistryScanner
 
-Scans Julia registries for possible maliscious behavior and misconfigurations.
+Scans Julia registries for possible malicious behavior and misconfigurations.
 
 ![](./assets/findings_page.png)
 
