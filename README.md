@@ -69,5 +69,5 @@ View logs via Expore > Loki > `compose_service = scanner`.
 
 ### Alerts
 
-Alerts for errors (not findings) are pre-configured, but delivery is not.
+Alerts are pre-configured, but delivery is not.
 Configure the default contact point in Grafana with your preferred integration to receive these alerts.

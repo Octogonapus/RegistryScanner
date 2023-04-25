@@ -1,7 +1,7 @@
 apiVersion: 1
 groups:
   - orgId: 1
-    name: default
+    name: ScannerLogs
     folder: scanner
     interval: 1m
     rules:
@@ -12,7 +12,7 @@ groups:
           - refId: A
             queryType: range
             relativeTimeRange:
-              from: 600
+              from: 3600
               to: 0
             datasourceUid: P982945308D3682D1
             model:
@@ -25,7 +25,7 @@ groups:
               refId: A
           - refId: B
             relativeTimeRange:
-              from: 600
+              from: 3600
               to: 0
             datasourceUid: __expr__
             model:
@@ -54,7 +54,7 @@ groups:
               type: reduce
           - refId: C
             relativeTimeRange:
-              from: 600
+              from: 3600
               to: 0
             datasourceUid: __expr__
             model:
@@ -89,7 +89,7 @@ groups:
         isPaused: false
 
   - orgId: 1
-    name: default
+    name: ScannerLogs
     folder: scanner
     interval: 1m
     rules:
@@ -100,7 +100,7 @@ groups:
           - refId: A
             queryType: range
             relativeTimeRange:
-              from: 600
+              from: 3600
               to: 0
             datasourceUid: P982945308D3682D1
             model:
@@ -113,7 +113,7 @@ groups:
               refId: A
           - refId: B
             relativeTimeRange:
-              from: 600
+              from: 3600
               to: 0
             datasourceUid: __expr__
             model:
@@ -142,7 +142,7 @@ groups:
               type: reduce
           - refId: C
             relativeTimeRange:
-              from: 600
+              from: 3600
               to: 0
             datasourceUid: __expr__
             model:
@@ -174,4 +174,76 @@ groups:
         for: 1m
         annotations:
           summary: Fires if the scanner container logs uncaught errors.
+        isPaused: false
+
+  - orgId: 1
+    name: findings
+    folder: scanner
+    interval: 1m
+    rules:
+      - uid: LP14QCPVz
+        title: ErrorFinding
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 604800
+              to: 0
+            datasourceUid: P211906C1C32DB77E
+            model:
+              datasource:
+                type: mysql
+                uid: P211906C1C32DB77E
+              editorMode: code
+              format: table
+              hide: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              rawQuery: true
+              rawSql: SELECT COUNT(id) FROM main.finding WHERE level = 'ERROR';
+              refId: A
+              sql:
+                columns:
+                  - parameters: []
+                    type: function
+                groupBy:
+                  - property:
+                      type: string
+                    type: groupBy
+                limit: 50
+          - refId: C
+            relativeTimeRange:
+              from: 604800
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              hide: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          description: Error level findings are the most likely type of finding to indicate malicious behavior and warrant a quick response.
+          summary: Fires if an error level finding is present in the database.
         isPaused: false

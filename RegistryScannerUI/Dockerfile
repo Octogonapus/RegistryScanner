@@ -1,7 +1,6 @@
 FROM node:18-alpine AS builder
 RUN mkdir /app
 COPY src /app/src
-COPY static /app/static
 COPY .npmrc /app/.npmrc
 COPY package-lock.json /app/package-lock.json
 COPY package.json /app/package.json
