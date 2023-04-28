@@ -7,7 +7,7 @@
 
 	let findingsValues = findings.map((row) => {
 		if (row.category == "PULL_REQUEST") {
-			return [row.found, row.body.registry_name, row.body.package_name_in_db, row.category, row.type, row.level]
+			return [row.found, row.body.registry_name, row.body.package_name_in_pr, row.category, row.type, row.level]
 		} else {
 			if (
 				row.type == "PACKAGE_NON_UNIQUE_NAME" ||
