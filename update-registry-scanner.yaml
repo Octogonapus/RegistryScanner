@@ -1,4 +1,4 @@
-- hosts: registry-scanner
+- hosts: registryscanner
   become: true
   tasks:
     - name: Populate service facts
