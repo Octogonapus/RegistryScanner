@@ -1,0 +1,61 @@
+- hosts: registry-scanner
+  become: true
+  tasks:
+    - name: Populate service facts
+      ansible.builtin.service_facts:
+
+    - name: Determine groups
+      ansible.builtin.getent:
+        database: group
+
+    - name: Stop service
+      when: "'registryscanner.service' in ansible_facts.services"
+      ansible.builtin.systemd:
+        service: registryscanner.service
+        state: stopped
+
+    - name: Create user
+      when: "'registryscanner' not in ansible_facts.getent_group"
+      ansible.builtin.user:
+        name: registryscanner
+        groups: docker
+        append: true
+
+    - name: Copy src
+      ansible.posix.synchronize:
+        src: ../RegistryScanner/
+        dest: /home/registryscanner/RegistryScanner/
+        rsync_opts:
+          - "--chown=registryscanner:registryscanner --chmod=F777"
+
+    - name: Copy service
+      ansible.builtin.copy:
+        src: registry-scanner/registryscanner.service
+        dest: /etc/systemd/system/registryscanner.service
+        owner: root
+        group: root
+        mode: 0777
+
+    - name: Build scanner container
+      ansible.builtin.command:
+        cmd: docker build RegistryScanner -t registry-scanner:latest
+        chdir: /home/registryscanner/RegistryScanner
+      changed_when: true
+
+    - name: Build UI container
+      ansible.builtin.command:
+        cmd: docker build RegistryScannerUI -t registry-scanner-ui:latest
+        chdir: /home/registryscanner/RegistryScanner
+      changed_when: true
+
+    - name: Enable service
+      ansible.builtin.file:
+        src: /etc/systemd/system/registryscanner.service
+        dest: /etc/systemd/system/multi-user.target.wants/registryscanner.service
+        state: link
+
+    - name: Start service
+      ansible.builtin.systemd:
+        service: registryscanner.service
+        state: started
+        daemon_reload: true

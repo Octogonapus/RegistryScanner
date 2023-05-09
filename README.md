@@ -34,10 +34,20 @@ The compose file includes:
 - Grafana, which provides observability and runs on [localhost:3000](http://localhost:3000)
 - Loki, which collects logs from the other services and can be accessed via Grafana
 
+Loki requires a plugin:
+
+```sh
+docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all-permissions
+```
+
 RegistryScanner is at its core a service which runs continuously to scan registries and pull requests, generating findings which are inserted into a database.
 This service can be deployed independently from the rest of the services specified in the compose file if you want.
 All it needs is a database and some secrets for GitHub integration.
 Look at the [compose file](./docker-compose.yaml) for more.
+
+If you want to deploy RegistryScanner via Ansible, an [example playbook](./update-registry-scanner.yaml) has been included.
+It expects this repository to be available at `../RegistryScanner`.
+It also expects [registryscanner.service](./registryscanner.service) to be available at `files/registry-scanner/registryscanner.service`.
 
 ### Configuration
 
