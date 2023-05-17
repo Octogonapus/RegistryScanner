@@ -633,23 +633,33 @@ function scan_diff(registry::GitHubRegistry, head_ref_name)
     end
 end
 
+function do_registry_scan(db, registry, last_scan_time)
+    @info "Updating registry $(registry.owner)/$(registry.name)"
+    dir = get_cache_dir(registry)
+    update_cache(registry, dir)
+    import_registry(db, dir)
+
+    @info "Scanning registry $(registry.owner)/$(registry.name)"
+    pull_requests = scan_registry(registry, last_scan_time)
+    @info "Found $(nrow(pull_requests)) PRs to scan"
+
+    for pr in eachrow(pull_requests)
+        @info "Scanning PR $(pr[:url])"
+        pkg_uuid, pkg_name, pkg_repo = scan_diff(registry, pr[:head_ref_name])
+        @debug registry pr[:head_ref_name] pkg_uuid pkg_name
+        scan_new_package(db, pkg_uuid, pkg_name, pkg_repo, pr[:url])
+        @info "Scan done"
+    end
+
+    return nothing
+end
+
 function do_registry_scans(db, registries, last_scan_time)
     for registry in registries
-        @info "Updating registry $(registry.owner)/$(registry.name)"
-        dir = get_cache_dir(registry)
-        update_cache(registry, dir)
-        import_registry(db, dir)
-
-        @info "Scanning registry $(registry.owner)/$(registry.name)"
-        pull_requests = scan_registry(registry, last_scan_time)
-        @info "Found $(nrow(pull_requests)) PRs to scan"
-
-        for pr in eachrow(pull_requests)
-            @info "Scanning PR $(pr[:url])"
-            pkg_uuid, pkg_name, pkg_repo = scan_diff(registry, pr[:head_ref_name])
-            @debug registry pr[:head_ref_name] pkg_uuid pkg_name
-            scan_new_package(db, pkg_uuid, pkg_name, pkg_repo, pr[:url])
-            @info "Scan done"
+        try
+            do_registry_scan(db, registry, last_scan_time)
+        catch ex
+            @error "Failed to do registry scan. Continuing to next registry." exception = (ex, catch_backtrace())
         end
     end
 
