@@ -5,7 +5,7 @@
 	import "@skeletonlabs/skeleton/styles/all.css"
 	// Most of your app wide CSS should be put in this file
 	import "../app.postcss"
-	import { AppBar, AppRail, AppRailTile, AppShell } from "@skeletonlabs/skeleton"
+	import { AppBar, AppRail, AppRailAnchor, AppShell } from "@skeletonlabs/skeleton"
 	import { selectedAppRailItem } from "../stores/selectedAppRailItem"
 </script>
 
@@ -15,8 +15,12 @@
 	</svelte:fragment>
 	<svelte:fragment slot="sidebarLeft">
 		<AppRail selected={selectedAppRailItem}>
-			<AppRailTile label="Findings" value={0} tag="a" href="/findings" />
-			<AppRailTile label="Import Errors" value={1} tag="a" href="/import_errors" />
+			<AppRailAnchor label="Findings" value={0} tag="a" href="/findings">
+				<span>Findings</span>
+			</AppRailAnchor>
+			<AppRailAnchor label="Import Errors" value={1} tag="a" href="/import_errors">
+				<span>Import Errors</span>
+			</AppRailAnchor>
 		</AppRail>
 	</svelte:fragment>
 	<slot />
