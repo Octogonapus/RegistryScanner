@@ -693,6 +693,17 @@ function save_last_scan_time(time::ZonedDateTime)
     return nothing
 end
 
+function new_db_connection()
+    return retry(DBInterface.connect, delays = ExponentialBackOff(n = 3))(
+        MySQL.Connection,
+        ENV["DB_HOST"],
+        ENV["DB_USER"],
+        ENV["DB_PASS"];
+        db = ENV["DB_DATABASE"],
+        port = parse(Int, ENV["DB_PORT"]),
+    )
+end
+
 function run_service()
     with_logger(FormatLogger(LoggingFormats.JSON(recursive = true), stderr)) do
         scan_interval_minutes = parse(Int, ENV["SCAN_INTERVAL_MINUTES"])
@@ -702,30 +713,26 @@ function run_service()
             GitHubRegistry(properties["owner"], properties["name"], properties["base_ref_name"], properties["secret"])
         end
 
-        db = retry(DBInterface.connect, delays = ExponentialBackOff(n = 3))(
-            MySQL.Connection,
-            ENV["DB_HOST"],
-            ENV["DB_USER"],
-            ENV["DB_PASS"];
-            db = ENV["DB_DATABASE"],
-            port = parse(Int, ENV["DB_PORT"]),
-        )
-
         last_scan_time = load_last_scan_time()
 
         while true
-            @info "Running registry scans"
+            db = new_db_connection()
             try
-                do_registry_scans(db, registries, last_scan_time)
-            catch ex
-                @error "Registry scans failed" exception = (ex, catch_backtrace())
-            end
-            last_scan_time = ZonedDateTime(now(), tz"EST")
-            save_last_scan_time(last_scan_time)
+                @info "Running registry scans"
+                try
+                    do_registry_scans(db, registries, last_scan_time)
+                catch ex
+                    @error "Registry scans failed" exception = (ex, catch_backtrace())
+                end
+                last_scan_time = ZonedDateTime(now(), tz"EST")
+                save_last_scan_time(last_scan_time)
 
-            @info "Running DB scan"
-            scan_db(db)
-            @info "DB scan finished"
+                @info "Running DB scan"
+                scan_db(db)
+                @info "DB scan finished"
+            finally
+                DBInterface.close!(db)
+            end
 
             try
                 sleep(scan_interval_minutes * 60)
